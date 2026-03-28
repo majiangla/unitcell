@@ -261,9 +261,9 @@
                 autoRotationSpeed: 0.001, // 基础自转速度
                 baseRotationSpeed: 0.001, // 保存基础速度
                 clickCount: 0, // 点击计数器
-                // 手动旋转
-                manualRotationX: 0,
-                manualRotationY: 0
+                // 手动旋转增量（像素）
+                manualDeltaX: 0,
+                manualDeltaY: 0
             };
 
             // 添加标签（放在最后，确保在最上层）
@@ -325,8 +325,8 @@
                 const deltaX = e.clientX - crystal.lastMouseX;
                 const deltaY = e.clientY - crystal.lastMouseY;
 
-                crystal.manualRotationY += deltaX * 0.01;
-                crystal.manualRotationX += deltaY * 0.01;
+                crystal.manualDeltaX += deltaX;
+                crystal.manualDeltaY += deltaY;
 
                 crystal.lastMouseX = e.clientX;
                 crystal.lastMouseY = e.clientY;
@@ -963,17 +963,34 @@
             requestAnimationFrame(animate);
 
             crystals.forEach(crystal => {
-                // 应用手动旋转
-                crystal.rotationGroup.rotation.x += crystal.manualRotationX;
-                crystal.rotationGroup.rotation.y += crystal.manualRotationY;
+                // 应用手动旋转（使用世界坐标轴，避免翻转后方向反转）
+                if (crystal.manualDeltaX !== 0 || crystal.manualDeltaY !== 0) {
+                    const yaw = new THREE.Quaternion().setFromAxisAngle(
+                        new THREE.Vector3(0, 1, 0),
+                        crystal.manualDeltaX * 0.01
+                    );
+                    const pitch = new THREE.Quaternion().setFromAxisAngle(
+                        new THREE.Vector3(1, 0, 0),
+                        crystal.manualDeltaY * 0.01
+                    );
 
-                // 重置手动旋转增量
-                crystal.manualRotationX = 0;
-                crystal.manualRotationY = 0;
+                    crystal.rotationGroup.quaternion.premultiply(yaw);
+                    crystal.rotationGroup.quaternion.premultiply(pitch);
+                    crystal.rotationGroup.quaternion.normalize();
 
-                // 应用自转（统一绕Y轴旋转）
+                    // 重置手动旋转增量
+                    crystal.manualDeltaX = 0;
+                    crystal.manualDeltaY = 0;
+                }
+
+                // 应用自转（统一绕世界Y轴旋转）
                 if (crystal.autoRotation && !crystal.isMouseDown) {
-                    crystal.rotationGroup.rotation.y += crystal.autoRotationSpeed;
+                    const autoYaw = new THREE.Quaternion().setFromAxisAngle(
+                        new THREE.Vector3(0, 1, 0),
+                        crystal.autoRotationSpeed
+                    );
+                    crystal.rotationGroup.quaternion.premultiply(autoYaw);
+                    crystal.rotationGroup.quaternion.normalize();
                 }
 
                 crystal.renderer.render(crystal.scene, crystal.camera);
