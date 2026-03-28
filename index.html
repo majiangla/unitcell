@@ -254,16 +254,13 @@
                 renderer: renderer,
                 rotationGroup: rotationGroup,
                 isMouseDown: false,
-                lastMouseX: 0,
-                lastMouseY: 0,
                 // 自转相关
                 autoRotation: true,
                 autoRotationSpeed: 0.001, // 基础自转速度
                 baseRotationSpeed: 0.001, // 保存基础速度
                 clickCount: 0, // 点击计数器
-                // 手动旋转增量（像素）
-                manualDeltaX: 0,
-                manualDeltaY: 0
+                // 轨迹球拖拽向量
+                lastTrackballVector: null
             };
 
             // 添加标签（放在最后，确保在最上层）
@@ -314,32 +311,38 @@
 
             container.addEventListener('mousedown', (e) => {
                 crystal.isMouseDown = true;
-                crystal.lastMouseX = e.clientX;
-                crystal.lastMouseY = e.clientY;
+                crystal.lastTrackballVector = getTrackballVector(e, container);
                 e.preventDefault();
             });
 
             container.addEventListener('mousemove', (e) => {
                 if (!crystal.isMouseDown) return;
 
-                const deltaX = e.clientX - crystal.lastMouseX;
-                const deltaY = e.clientY - crystal.lastMouseY;
+                const currentTrackballVector = getTrackballVector(e, container);
 
-                crystal.manualDeltaX += deltaX;
-                crystal.manualDeltaY += deltaY;
+                if (crystal.lastTrackballVector && currentTrackballVector) {
+                    const rotationDelta = new THREE.Quaternion().setFromUnitVectors(
+                        crystal.lastTrackballVector,
+                        currentTrackballVector
+                    );
 
-                crystal.lastMouseX = e.clientX;
-                crystal.lastMouseY = e.clientY;
+                    crystal.rotationGroup.quaternion.premultiply(rotationDelta);
+                    crystal.rotationGroup.quaternion.normalize();
+                }
+
+                crystal.lastTrackballVector = currentTrackballVector;
                 e.preventDefault();
             });
 
             container.addEventListener('mouseup', (e) => {
                 crystal.isMouseDown = false;
+                crystal.lastTrackballVector = null;
                 e.preventDefault();
             });
 
             container.addEventListener('mouseleave', (e) => {
                 crystal.isMouseDown = false;
+                crystal.lastTrackballVector = null;
                 e.preventDefault();
             });
 
@@ -946,6 +949,23 @@
             });
         }
 
+        // 将鼠标位置映射到虚拟轨迹球表面（容器局部坐标）
+        function getTrackballVector(event, container) {
+            const rect = container.getBoundingClientRect();
+            const x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+            const y = -(((event.clientY - rect.top) / rect.height) * 2 - 1);
+            const lengthSquared = x * x + y * y;
+            const vector = new THREE.Vector3(x, y, 0);
+
+            if (lengthSquared <= 1) {
+                vector.z = Math.sqrt(1 - lengthSquared);
+            } else {
+                vector.normalize();
+            }
+
+            return vector.normalize();
+        }
+
         // 窗口大小调整处理
         function onWindowResize() {
             crystals.forEach(crystal => {
@@ -963,26 +983,6 @@
             requestAnimationFrame(animate);
 
             crystals.forEach(crystal => {
-                // 应用手动旋转（使用世界坐标轴，避免翻转后方向反转）
-                if (crystal.manualDeltaX !== 0 || crystal.manualDeltaY !== 0) {
-                    const yaw = new THREE.Quaternion().setFromAxisAngle(
-                        new THREE.Vector3(0, 1, 0),
-                        crystal.manualDeltaX * 0.01
-                    );
-                    const pitch = new THREE.Quaternion().setFromAxisAngle(
-                        new THREE.Vector3(1, 0, 0),
-                        crystal.manualDeltaY * 0.01
-                    );
-
-                    crystal.rotationGroup.quaternion.premultiply(yaw);
-                    crystal.rotationGroup.quaternion.premultiply(pitch);
-                    crystal.rotationGroup.quaternion.normalize();
-
-                    // 重置手动旋转增量
-                    crystal.manualDeltaX = 0;
-                    crystal.manualDeltaY = 0;
-                }
-
                 // 应用自转（统一绕世界Y轴旋转）
                 if (crystal.autoRotation && !crystal.isMouseDown) {
                     const autoYaw = new THREE.Quaternion().setFromAxisAngle(
